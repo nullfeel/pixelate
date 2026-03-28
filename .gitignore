@@ -1,0 +1,30 @@
+# Binaries
+pixelate
+pixelate.exe
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test outputs
+*.txt
+*.ans
+*.html
+
+# Test images
+images/
+
+# Go build
+/bin/
+/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
