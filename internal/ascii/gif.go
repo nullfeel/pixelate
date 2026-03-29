@@ -46,17 +46,34 @@ func PlayAnimatedGIF(path string, opts ConvertOptions) error {
 		return fmt.Errorf("GIF contains no frames")
 	}
 
+	// Cap frames to prevent memory exhaustion
+	maxFrames := 500
+	frameCount := len(g.Image)
+	if frameCount > maxFrames {
+		frameCount = maxFrames
+	}
+
 	// Pre-render all frames to ASCII
-	frames := make([][][]AsciiChar, len(g.Image))
+	frames := make([][][]AsciiChar, frameCount)
 
 	// Build a composite canvas to handle GIF disposal methods properly.
 	// Each frame may only cover a sub-rectangle of the full image.
+	if g.Config.Width <= 0 || g.Config.Height <= 0 {
+		return fmt.Errorf("GIF has invalid dimensions: %dx%d", g.Config.Width, g.Config.Height)
+	}
 	bounds := image.Rect(0, 0, g.Config.Width, g.Config.Height)
 	canvas := image.NewPaletted(bounds, palette.Plan9)
 
-	for i, frame := range g.Image {
+	for i := 0; i < frameCount; i++ {
+		frame := g.Image[i]
+		// Validate frame bounds are within canvas
+		fb := frame.Bounds()
+		if !fb.In(image.Rect(0, 0, g.Config.Width, g.Config.Height)) {
+			fb = fb.Intersect(bounds)
+		}
+
 		// Draw the frame onto the canvas
-		draw.Draw(canvas, frame.Bounds(), frame, frame.Bounds().Min, draw.Over)
+		draw.Draw(canvas, fb, frame, frame.Bounds().Min, draw.Over)
 
 		// Convert the full canvas to a regular RGBA image for consistent processing
 		rgba := image.NewRGBA(bounds)
@@ -68,6 +85,7 @@ func PlayAnimatedGIF(path string, opts ConvertOptions) error {
 	// Handle Ctrl+C gracefully
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt)
+	defer signal.Stop(sigCh)
 
 	// Hide cursor
 	fmt.Print("\033[?25l")
@@ -98,9 +116,9 @@ func PlayAnimatedGIF(path string, opts ConvertOptions) error {
 			fmt.Print(sb.String())
 
 			// Delay: GIF delay is in 100ths of a second
-			delay := g.Delay[i]
-			if delay <= 0 {
-				delay = 10 // default ~100ms
+			delay := 10 // default ~100ms
+			if i < len(g.Delay) && g.Delay[i] > 0 {
+				delay = g.Delay[i]
 			}
 			time.Sleep(time.Duration(delay) * 10 * time.Millisecond)
 		}

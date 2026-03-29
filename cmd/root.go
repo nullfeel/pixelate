@@ -11,15 +11,18 @@ import (
 )
 
 var (
-	width      int
-	grayscale  bool
-	invert     bool
-	output     string
-	charset    string
-	preset     string
-	brightness float64
-	contrast   float64
-	dither     bool
+	width           int
+	grayscale       bool
+	invert          bool
+	output          string
+	charset         string
+	preset          string
+	brightness      float64
+	contrast        float64
+	dither          bool
+	filter          string
+	filterIntensity float64
+	colorMode       string
 )
 
 var rootCmd = &cobra.Command{
@@ -53,12 +56,15 @@ func init() {
 	rootCmd.Flags().IntVarP(&width, "width", "w", 0, "Output width in characters (default: terminal width)")
 	rootCmd.Flags().BoolVarP(&grayscale, "grayscale", "g", false, "Output in grayscale (no colors)")
 	rootCmd.Flags().BoolVar(&invert, "invert", false, "Invert light/dark characters")
-	rootCmd.Flags().StringVarP(&output, "output", "o", "", "Save output to file (.txt, .ans, .html)")
+	rootCmd.Flags().StringVarP(&output, "output", "o", "", "Save output to file (.txt, .ans, .html, .svg)")
 	rootCmd.Flags().StringVar(&charset, "charset", "", "Custom character set (light to dark)")
-	rootCmd.Flags().StringVar(&preset, "preset", "simple", "Character preset: simple, block, braille, detailed")
+	rootCmd.Flags().StringVar(&preset, "preset", "simple", "Character preset: simple, block, braille, detailed, dots, ascii")
 	rootCmd.Flags().Float64Var(&brightness, "brightness", 1.0, "Brightness multiplier (e.g., 1.2)")
 	rootCmd.Flags().Float64Var(&contrast, "contrast", 1.0, "Contrast multiplier (e.g., 1.5)")
 	rootCmd.Flags().BoolVar(&dither, "dither", false, "Apply Floyd-Steinberg dithering (grayscale)")
+	rootCmd.Flags().StringVar(&filter, "filter", "none", "Image filter: none, edge, negative, sepia, blur, sharpen, pixelate, grayscale")
+	rootCmd.Flags().Float64Var(&filterIntensity, "filter-intensity", 0, "Filter intensity/radius (used by blur and pixelate filters)")
+	rootCmd.Flags().StringVar(&colorMode, "color-mode", "true", "Color mode: true (24-bit), 256, 16, none")
 }
 
 func getTerminalWidth() int {
@@ -72,8 +78,29 @@ func getTerminalWidth() int {
 func runPixelate(cmd *cobra.Command, args []string) error {
 	// Determine target width
 	targetWidth := width
-	if targetWidth <= 0 {
+	if targetWidth < 1 {
 		targetWidth = getTerminalWidth()
+	}
+	if targetWidth > 500 {
+		fmt.Fprintf(os.Stderr, "Warning: width %d exceeds maximum, capping at 500\n", targetWidth)
+		targetWidth = 500
+	}
+
+	// Validate filter flag
+	validFilters := map[string]bool{
+		"none": true, "edge": true, "negative": true, "sepia": true,
+		"blur": true, "sharpen": true, "pixelate": true, "grayscale": true,
+	}
+	if !validFilters[filter] {
+		return fmt.Errorf("invalid filter %q: must be one of none, edge, negative, sepia, blur, sharpen, pixelate, grayscale", filter)
+	}
+
+	// Validate color-mode flag
+	validColorModes := map[string]bool{
+		"true": true, "256": true, "16": true, "none": true,
+	}
+	if !validColorModes[colorMode] {
+		return fmt.Errorf("invalid color-mode %q: must be one of true, 256, 16, none", colorMode)
 	}
 
 	// Resolve character set
@@ -87,12 +114,15 @@ func runPixelate(cmd *cobra.Command, args []string) error {
 	}
 
 	opts := ascii.ConvertOptions{
-		Width:      targetWidth,
-		Charset:    chars,
-		Grayscale:  grayscale,
-		Brightness: brightness,
-		Contrast:   contrast,
-		Dither:     dither,
+		Width:           targetWidth,
+		Charset:         chars,
+		Grayscale:       grayscale,
+		Brightness:      brightness,
+		Contrast:        contrast,
+		Dither:          dither,
+		Filter:          ascii.FilterType(filter),
+		FilterIntensity: filterIntensity,
+		Color:           ascii.ColorMode(colorMode),
 	}
 
 	// Read from stdin if no args or arg is "-"
@@ -164,7 +194,7 @@ func processStdin(opts ascii.ConvertOptions) error {
 
 func outputResult(art [][]ascii.AsciiChar) error {
 	if output == "" {
-		ascii.PrintToTerminal(art)
+		ascii.PrintToTerminal(art, ascii.ColorMode(colorMode))
 		return nil
 	}
 
@@ -172,8 +202,10 @@ func outputResult(art [][]ascii.AsciiChar) error {
 	switch {
 	case strings.HasSuffix(lower, ".html"):
 		return ascii.SaveToHTML(art, output)
+	case strings.HasSuffix(lower, ".svg"):
+		return ascii.SaveToSVG(art, output, 10)
 	case strings.HasSuffix(lower, ".ans"):
-		return ascii.SaveToANSI(art, output)
+		return ascii.SaveToANSI(art, output, ascii.ColorMode(colorMode))
 	default:
 		return ascii.SaveToText(art, output)
 	}

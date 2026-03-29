@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/webp"
@@ -34,8 +35,10 @@ func LoadFromFile(path string) (image.Image, error) {
 }
 
 // LoadFromURL downloads an image from an HTTP/HTTPS URL and decodes it.
+// Uses a 30-second timeout and limits response body to 50MB.
 func LoadFromURL(url string) (image.Image, error) {
-	resp, err := http.Get(url)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fetch URL: %w", err)
 	}
@@ -50,7 +53,9 @@ func LoadFromURL(url string) (image.Image, error) {
 		return nil, fmt.Errorf("URL does not point to an image (content-type: %s)", ct)
 	}
 
-	img, _, err := image.Decode(resp.Body)
+	// Limit response body to 50MB to prevent memory exhaustion
+	limited := io.LimitReader(resp.Body, 50*1024*1024)
+	img, _, err := image.Decode(limited)
 	if err != nil {
 		return nil, fmt.Errorf("cannot decode image from URL: %w", err)
 	}

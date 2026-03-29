@@ -17,12 +17,15 @@ type AsciiChar struct {
 
 // ConvertOptions controls how an image is converted to ASCII art.
 type ConvertOptions struct {
-	Width      int
-	Charset    string
-	Grayscale  bool
-	Brightness float64
-	Contrast   float64
-	Dither     bool
+	Width           int
+	Charset         string
+	Grayscale       bool
+	Brightness      float64
+	Contrast        float64
+	Dither          bool
+	Filter          FilterType
+	FilterIntensity float64
+	Color           ColorMode
 }
 
 // Convert transforms an image into a 2D grid of AsciiChar.
@@ -40,6 +43,14 @@ func Convert(img image.Image, opts ConvertOptions) [][]AsciiChar {
 	}
 	if opts.Contrast == 0 {
 		opts.Contrast = 1.0
+	}
+	if opts.Color == "" {
+		opts.Color = ColorTrue
+	}
+
+	// Apply image filter if specified
+	if opts.Filter != "" && opts.Filter != FilterNone {
+		img = ApplyFilter(img, opts.Filter, opts.FilterIntensity)
 	}
 
 	chars := []rune(opts.Charset)

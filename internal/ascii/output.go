@@ -6,17 +6,23 @@ import (
 	"strings"
 )
 
-// PrintToTerminal renders the ASCII art to stdout with 24-bit ANSI true color.
-// Each character is wrapped in an escape sequence that sets the foreground color
-// to the original pixel's RGB value, producing vivid full-color output.
-func PrintToTerminal(art [][]AsciiChar) {
+// PrintToTerminal renders the ASCII art to stdout with ANSI color.
+// The color mode determines the escape sequence format used.
+func PrintToTerminal(art [][]AsciiChar, mode ...ColorMode) {
+	cm := ColorTrue
+	if len(mode) > 0 {
+		cm = mode[0]
+	}
+
 	var sb strings.Builder
 	for _, row := range art {
 		for _, ch := range row {
-			// \033[38;2;R;G;Bm sets 24-bit foreground color
-			sb.WriteString(fmt.Sprintf("\033[38;2;%d;%d;%dm%c", ch.R, ch.G, ch.B, ch.Char))
+			sb.WriteString(FormatChar(ch.Char, ch.R, ch.G, ch.B, cm))
 		}
-		sb.WriteString("\033[0m\n") // reset at end of each line
+		if cm != ColorNone {
+			sb.WriteString("\033[0m")
+		}
+		sb.WriteByte('\n')
 	}
 	fmt.Print(sb.String())
 }
@@ -40,7 +46,12 @@ func SaveToText(art [][]AsciiChar, path string) error {
 
 // SaveToANSI writes the ASCII art with ANSI escape codes to a file.
 // The resulting file can be displayed with `cat` in a true-color terminal.
-func SaveToANSI(art [][]AsciiChar, path string) error {
+func SaveToANSI(art [][]AsciiChar, path string, mode ...ColorMode) error {
+	cm := ColorTrue
+	if len(mode) > 0 {
+		cm = mode[0]
+	}
+
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("cannot create file: %w", err)
@@ -49,9 +60,13 @@ func SaveToANSI(art [][]AsciiChar, path string) error {
 
 	for _, row := range art {
 		for _, ch := range row {
-			fmt.Fprintf(f, "\033[38;2;%d;%d;%dm%c", ch.R, ch.G, ch.B, ch.Char)
+			fmt.Fprint(f, FormatChar(ch.Char, ch.R, ch.G, ch.B, cm))
 		}
-		fmt.Fprintln(f, "\033[0m")
+		if cm != ColorNone {
+			fmt.Fprintln(f, "\033[0m")
+		} else {
+			fmt.Fprintln(f)
+		}
 	}
 	return nil
 }
